@@ -2,7 +2,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import { spawn, ChildProcess } from 'child_process';
 import { join } from 'path';
 import * as fs from 'fs';
-import ffmpegStatic from 'ffmpeg-static';
 
 export enum VideoState {
   WELCOME = 'welcome',
@@ -144,8 +143,8 @@ export class StreamService {
       this.rtmpUrl     // RTMP output URL
     ];
     
-    // Spawn ffmpeg process using ffmpeg-static
-    this.ffmpegProcess = spawn(ffmpegStatic as unknown as string, args);
+    // Spawn ffmpeg process using system-installed ffmpeg
+    this.ffmpegProcess = spawn('ffmpeg', args);
     
     if (this.ffmpegProcess) {
       this.ffmpegProcess.on('spawn', () => {

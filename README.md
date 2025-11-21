@@ -15,7 +15,7 @@ This application provides a video streaming service that seamlessly switches bet
 ## Prerequisites
 
 - Node.js (v18 or higher)
-- FFmpeg (automatically installed via ffmpeg-static)
+- FFmpeg (system-installed)
 - An RTMP server (e.g., nginx-rtmp, Wowza, or AWS IVS)
 
 ## Installation

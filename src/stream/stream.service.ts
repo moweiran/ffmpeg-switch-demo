@@ -15,51 +15,58 @@ class InstantVideoSwitcher {
   currentProcess: ChildProcess | null;
   switchQueue: string[];
   isSwitching: boolean;
+  lastVideoPath: string | null; // 记录上一个视频路径
 
   constructor(outputUrl) {
     this.outputUrl = outputUrl;
     this.currentProcess = null;
     this.switchQueue = [];
     this.isSwitching = false;
+    this.lastVideoPath = null;
   }
 
   // 创建带有强制关键帧的流
   createStreamWithKeyframes(videoPath) {
+    // 构建唯一的标识符以避免流状态冲突
+    const timestamp = Date.now();
+    const uniqueId = Math.random().toString(36).substr(2, 9);
+    
     const args = [
       '-re',
-      '-stream_loop', '-1', // 循环播放视频以避免重复播放问题
+      '-stream_loop', '-1', // 循环播放视频
       '-i', videoPath,
       '-c:v', 'libx264',
-      '-g', '30',                    // GOP大小，更短的关键帧间隔
-      '-keyint_min', '30',           // 最小关键帧间隔
-      '-x264-params', 'scenecut=40', // 场景切换敏感度
-      '-force_key_frames', 'expr:gte(t,n_forced*2)', // 强制关键帧
-      '-acodec', 'aac', // AAC audio codec
-      '-vcodec', 'libx264', // H.264 video codec
-      '-profile:v', 'baseline', // Baseline profile for compatibility
-      '-level', '3.1', // Level 3.1
-      '-r', '30', // Frame rate
-      '-s', '720x1280', // Video size
-      '-pix_fmt', 'yuv420p', // Pixel format
-      '-b:v', '1200k', // Video bitrate
-      '-maxrate', '1200k', // Maximum bitrate
-      '-bufsize', '1800k', // Buffer size
-      '-ar', '16000', // Audio sample rate
-      '-ac', '1', // Audio channels
-      '-b:a', '64k', // Audio bitrate
-      '-preset', 'ultrafast', // Faster encoding for real-time
-      '-tune', 'zerolatency', // Zero latency tuning for real-time
-      '-flags', '+low_delay', // Low delay flags
-      '-f', 'flv', // Output format for RTMP
-      '-flvflags', 'no_duration_filesize', // Prevent issues with duration/filesize updates
-      '-fflags', '+genpts', // Generate PTS
-      '-avoid_negative_ts', 'make_zero', // Avoid negative timestamps
-      '-reconnect', '1', // 启用重连
-      '-reconnect_at_eof', '1', // EOF时重连
-      '-reconnect_streamed', '1', // 流重连
-      '-reconnect_delay_max', '2', // 最大重连延迟
-      '-af', 'aresample=async=1:first_pts=0', // 音频重采样以解决同步问题
-      '-async', '1', // 音频同步
+      '-g', '30',
+      '-keyint_min', '30',
+      '-x264-params', 'scenecut=40',
+      '-force_key_frames', 'expr:gte(t,n_forced*2)',
+      '-acodec', 'aac',
+      '-vcodec', 'libx264',
+      '-profile:v', 'baseline',
+      '-level', '3.1',
+      '-r', '30',
+      '-s', '720x1280',
+      '-pix_fmt', 'yuv420p',
+      '-b:v', '1200k',
+      '-maxrate', '1200k',
+      '-bufsize', '1800k',
+      '-ar', '16000',
+      '-ac', '1',
+      '-b:a', '64k',
+      '-preset', 'ultrafast',
+      '-tune', 'zerolatency',
+      '-flags', '+low_delay',
+      '-f', 'flv',
+      '-flvflags', 'no_duration_filesize',
+      '-fflags', '+genpts',
+      '-avoid_negative_ts', 'make_zero',
+      '-reconnect', '1',
+      '-reconnect_at_eof', '1',
+      '-reconnect_streamed', '1',
+      '-reconnect_delay_max', '2',
+      '-af', 'aresample=async=1:first_pts=0', // 音频重采样
+      '-async', '1',
+      '-metadata', `comment=${timestamp}_${uniqueId}`, // 添加唯一元数据
       this.outputUrl
     ];
 
@@ -67,76 +74,142 @@ class InstantVideoSwitcher {
 
     process.stderr.on('data', (data) => {
       const output = data.toString();
-      // 监听关键帧信息
+      // 监听关键帧信息和错误
       if (output.includes('keyframe')) {
         console.log('关键帧生成:', output);
+      }
+      if (output.includes('error') || output.includes('Error')) {
+        console.error('FFmpeg错误:', output);
       }
     });
 
     return process;
   }
 
+  // 彻底终止当前进程
+  async terminateCurrentProcess(): Promise<void> {
+    if (!this.currentProcess) {
+      return Promise.resolve();
+    }
+
+    const processToTerminate = this.currentProcess;
+    this.currentProcess = null;
+
+    return new Promise((resolve) => {
+      // 设置超时强制终止
+      const timeout = setTimeout(() => {
+        if (processToTerminate && !processToTerminate.killed) {
+          processToTerminate.kill('SIGKILL');
+        }
+        resolve();
+      }, 3000); // 3秒超时
+
+      // 监听进程关闭
+      processToTerminate.on('close', (code, signal) => {
+        clearTimeout(timeout);
+        console.log(`FFmpeg进程已关闭，退出码: ${code}, 信号: ${signal}`);
+        resolve();
+      });
+
+      // 发送终止信号
+      processToTerminate.kill('SIGTERM');
+    });
+  }
+
   // 立即切换视频
   async switchInstantly(newVideoPath) {
     // 如果正在切换，加入队列
     if (this.isSwitching) {
-      this.switchQueue.push(newVideoPath);
+      // 如果队列中已经有相同的视频请求，则替换它
+      const existingIndex = this.switchQueue.findIndex(path => path === newVideoPath);
+      if (existingIndex !== -1) {
+        this.switchQueue[existingIndex] = newVideoPath;
+      } else {
+        this.switchQueue.push(newVideoPath);
+      }
       return;
     }
 
     this.isSwitching = true;
     console.log(`立即切换到: ${newVideoPath}`);
 
-    // 1. 先启动新流
-    const newProcess = this.createStreamWithKeyframes(newVideoPath);
+    try {
+      // 1. 先终止当前进程（如果存在）
+      if (this.currentProcess) {
+        await this.terminateCurrentProcess();
+        // 额外等待确保资源释放
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
 
-    newProcess.on('spawn', () => {
-      console.log('新流启动成功');
+      // 2. 启动新流
+      const newProcess = this.createStreamWithKeyframes(newVideoPath);
 
-      // 2. 给新流一点时间建立连接和发送关键帧
-      setTimeout(() => {
-        // 3. 关闭旧流
-        if (this.currentProcess) {
-          this.currentProcess.kill('SIGTERM'); // 使用SIGTERM而非SIGKILL以允许优雅关闭
-          
-          // 等待旧进程完全关闭
-          this.currentProcess.on('close', () => {
-            console.log('旧流已关闭');
-            
-            // 增加额外的清理延迟以确保音频流正确重置
-            setTimeout(() => {
-              this.currentProcess = newProcess;
-              this.isSwitching = false;
-              console.log('切换完成');
+      // 添加错误监听器
+      newProcess.on('error', (error) => {
+        console.error('FFmpeg进程启动失败:', error);
+        if (this.currentProcess === newProcess) {
+          this.isSwitching = false;
+        }
+        // 尝试处理队列中的下一个请求
+        if (this.switchQueue.length > 0) {
+          const nextVideo = this.switchQueue.shift();
+          // 使用延迟避免递归调用过深
+          setTimeout(() => this.switchInstantly(nextVideo), 1000);
+        }
+      });
 
-              // 4. 处理队列中的下一个切换请求
-              if (this.switchQueue.length > 0) {
-                const nextVideo = this.switchQueue.shift();
-                this.switchInstantly(nextVideo);
-              }
-            }, 2000); // 增加200ms的额外清理时间
-          });
-        } else {
-          // 如果没有旧进程，直接切换
-          setTimeout(() => {
+      newProcess.on('spawn', () => {
+        console.log('新流启动成功');
+        
+        // 等待一段时间确保流稳定
+        setTimeout(() => {
+          // 双重检查确保没有其他切换正在进行
+          if (this.isSwitching && !newProcess.killed) {
             this.currentProcess = newProcess;
+            this.lastVideoPath = newVideoPath;
             this.isSwitching = false;
             console.log('切换完成');
 
-            // 4. 处理队列中的下一个切换请求
+            // 处理队列中的下一个切换请求
             if (this.switchQueue.length > 0) {
               const nextVideo = this.switchQueue.shift();
-              this.switchInstantly(nextVideo);
+              // 使用延迟避免递归调用过深
+              setTimeout(() => this.switchInstantly(nextVideo), 1000);
             }
-          }, 2000);
-        }
-      }, 2000); // 增加到800ms延迟确保新流已开始发送数据
-    });
+          }
+        }, 1000); // 1秒延迟确保流稳定
+      });
 
-    newProcess.on('error', (error) => {
-      console.error('新流启动失败:', error);
+      // 监听进程异常退出
+      newProcess.on('close', (code, signal) => {
+        if (this.currentProcess === newProcess) {
+          console.log(`FFmpeg进程意外关闭，退出码: ${code}, 信号: ${signal}`);
+          this.currentProcess = null;
+          
+          // 如果仍在切换状态，重置状态
+          if (this.isSwitching) {
+            this.isSwitching = false;
+          }
+          
+          // 如果有队列任务，继续处理
+          if (this.switchQueue.length > 0) {
+            const nextVideo = this.switchQueue.shift();
+            // 使用延迟避免递归调用过深
+            setTimeout(() => this.switchInstantly(nextVideo), 1000);
+          }
+        }
+      });
+    } catch (error) {
+      console.error('切换过程中发生错误:', error);
       this.isSwitching = false;
-    });
+      
+      // 尝试处理队列中的下一个请求
+      if (this.switchQueue.length > 0) {
+        const nextVideo = this.switchQueue.shift();
+        // 使用延迟避免递归调用过深
+        setTimeout(() => this.switchInstantly(nextVideo), 1000);
+      }
+    }
   }
 
   // 开始轮播（可随时中断切换）
@@ -145,9 +218,8 @@ class InstantVideoSwitcher {
 
     const videos = [
       join(process.cwd(), 'videos', 'welcome.mp4'),
-      join(process.cwd(), 'videos', 'welcome.mp4'), // 恢复使用相同视频文件进行测试
+      join(process.cwd(), 'videos', 'welcome.mp4'), // 保持使用相同视频进行测试
     ];
-
 
     // 初始播放
     this.switchInstantly(videos[0]);
@@ -156,7 +228,7 @@ class InstantVideoSwitcher {
     setInterval(() => {
       currentIndex = (currentIndex + 1) % videos.length;
       this.switchInstantly(videos[currentIndex]);
-    }, 15000); // 增加到15秒切换一次，给更多时间观察效果
+    }, 20000); // 20秒切换一次，给足够时间观察效果
   }
 }
 

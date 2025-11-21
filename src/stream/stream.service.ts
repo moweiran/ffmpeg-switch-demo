@@ -20,8 +20,8 @@ export class StreamService {
   private processTerminationPromise: Promise<void> | null = null;
 
   constructor() {
-    // Set your RTMP server URL here
-    this.rtmpUrl = 'rtmps://rtmp.icommu.cn:4433/live/livestream';
+    // Use local stunnel proxy instead of direct RTMPS for more reliable streaming
+    this.rtmpUrl = 'rtmp://127.0.0.1:1935/live/livestream';
   }
 
   /**
@@ -198,7 +198,7 @@ export class StreamService {
         '-reconnect_at_eof', '1', // Reconnect at EOF
         '-reconnect_streamed', '1', // Reconnect streamed
         '-reconnect_delay_max', '2', // Max reconnect delay
-        this.rtmpUrl     // RTMP output URL
+        this.rtmpUrl     // RTMP output URL (now pointing to local stunnel proxy)
       ];
       
       // Spawn ffmpeg process using system-installed ffmpeg

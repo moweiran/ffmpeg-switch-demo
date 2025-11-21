@@ -27,6 +27,7 @@ class InstantVideoSwitcher {
   createStreamWithKeyframes(videoPath) {
     const args = [
       '-re',
+      '-stream_loop', '-1', // 循环播放视频以避免重复播放问题
       '-i', videoPath,
       '-c:v', 'libx264',
       '-g', '30',                    // GOP大小，更短的关键帧间隔
@@ -53,6 +54,12 @@ class InstantVideoSwitcher {
       '-flvflags', 'no_duration_filesize', // Prevent issues with duration/filesize updates
       '-fflags', '+genpts', // Generate PTS
       '-avoid_negative_ts', 'make_zero', // Avoid negative timestamps
+      '-reconnect', '1', // 启用重连
+      '-reconnect_at_eof', '1', // EOF时重连
+      '-reconnect_streamed', '1', // 流重连
+      '-reconnect_delay_max', '2', // 最大重连延迟
+      '-af', 'aresample=async=1:first_pts=0', // 音频重采样以解决同步问题
+      '-async', '1', // 音频同步
       this.outputUrl
     ];
 
@@ -90,19 +97,40 @@ class InstantVideoSwitcher {
       setTimeout(() => {
         // 3. 关闭旧流
         if (this.currentProcess) {
-          this.currentProcess.kill('SIGKILL'); // 强制立即关闭
-        }
+          this.currentProcess.kill('SIGTERM'); // 使用SIGTERM而非SIGKILL以允许优雅关闭
+          
+          // 等待旧进程完全关闭
+          this.currentProcess.on('close', () => {
+            console.log('旧流已关闭');
+            
+            // 增加额外的清理延迟以确保音频流正确重置
+            setTimeout(() => {
+              this.currentProcess = newProcess;
+              this.isSwitching = false;
+              console.log('切换完成');
 
-        this.currentProcess = newProcess;
-        this.isSwitching = false;
-        console.log('切换完成');
+              // 4. 处理队列中的下一个切换请求
+              if (this.switchQueue.length > 0) {
+                const nextVideo = this.switchQueue.shift();
+                this.switchInstantly(nextVideo);
+              }
+            }, 2000); // 增加200ms的额外清理时间
+          });
+        } else {
+          // 如果没有旧进程，直接切换
+          setTimeout(() => {
+            this.currentProcess = newProcess;
+            this.isSwitching = false;
+            console.log('切换完成');
 
-        // 4. 处理队列中的下一个切换请求
-        if (this.switchQueue.length > 0) {
-          const nextVideo = this.switchQueue.shift();
-          this.switchInstantly(nextVideo);
+            // 4. 处理队列中的下一个切换请求
+            if (this.switchQueue.length > 0) {
+              const nextVideo = this.switchQueue.shift();
+              this.switchInstantly(nextVideo);
+            }
+          }, 2000);
         }
-      }, 500); // 500ms延迟确保新流已开始发送数据
+      }, 2000); // 增加到800ms延迟确保新流已开始发送数据
     });
 
     newProcess.on('error', (error) => {
@@ -117,7 +145,7 @@ class InstantVideoSwitcher {
 
     const videos = [
       join(process.cwd(), 'videos', 'welcome.mp4'),
-      join(process.cwd(), 'videos', 'idle.mp4')
+      join(process.cwd(), 'videos', 'welcome.mp4'), // 恢复使用相同视频文件进行测试
     ];
 
 
@@ -128,7 +156,7 @@ class InstantVideoSwitcher {
     setInterval(() => {
       currentIndex = (currentIndex + 1) % videos.length;
       this.switchInstantly(videos[currentIndex]);
-    }, 10000); // 每10秒切换一次，实际中由你的业务逻辑触发
+    }, 15000); // 增加到15秒切换一次，给更多时间观察效果
   }
 }
 

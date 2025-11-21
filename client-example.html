@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Video Streaming Client Example</title>
+    <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .controls {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        button {
+            margin: 5px;
+            padding: 10px 15px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .status {
+            margin: 10px 0;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 3px;
+        }
+        .video-container {
+            margin: 20px 0;
+            text-align: center;
+        }
+        #player {
+            width: 100%;
+            max-width: 640px;
+            height: 360px;
+            background-color: #000;
+        }
+    </style>
+</head>
+<body>
+    <h1>Video Streaming Client Example</h1>
+    
+    <div class="video-container">
+        <div id="player">
+            <p>Video player would be here in a real implementation</p>
+            <p>Connect to your RTMP stream to view the video</p>
+        </div>
+    </div>
+    
+    <div class="status">
+        <strong>Connection Status:</strong> <span id="connection-status">Disconnected</span>
+    </div>
+    
+    <div class="controls">
+        <h3>User Events</h3>
+        <button id="user-joined">User Joined</button>
+        <button id="user-speaking">User Speaking</button>
+        <button id="user-stopped">User Stopped Speaking</button>
+        <button id="request-processing">Request Processing</button>
+        <button id="ai-response">AI Response</button>
+        <button id="stop-stream">Stop Stream</button>
+    </div>
+    
+    <div class="controls">
+        <h3>Connection</h3>
+        <button id="connect">Connect</button>
+        <button id="disconnect">Disconnect</button>
+    </div>
+    
+    <div class="status">
+        <strong>Last Event:</strong> <span id="last-event">None</span>
+    </div>
+
+    <script>
+        // Update this to match your server URL
+        const SERVER_URL = 'http://localhost:3000';
+        let socket;
+        
+        function updateConnectionStatus(status) {
+            document.getElementById('connection-status').textContent = status;
+        }
+        
+        function updateLastEvent(event) {
+            document.getElementById('last-event').textContent = event;
+        }
+        
+        function connect() {
+            socket = io(SERVER_URL);
+            
+            socket.on('connect', () => {
+                updateConnectionStatus('Connected');
+                updateLastEvent('Connected to server');
+            });
+            
+            socket.on('disconnect', () => {
+                updateConnectionStatus('Disconnected');
+                updateLastEvent('Disconnected from server');
+            });
+            
+            socket.on('connect_error', (error) => {
+                updateConnectionStatus('Connection Error');
+                updateLastEvent('Connection error: ' + error.message);
+            });
+        }
+        
+        function disconnect() {
+            if (socket) {
+                socket.disconnect();
+            }
+        }
+        
+        // Event handlers
+        document.getElementById('connect').addEventListener('click', connect);
+        document.getElementById('disconnect').addEventListener('click', disconnect);
+        
+        document.getElementById('user-joined').addEventListener('click', () => {
+            if (socket) {
+                socket.emit('userJoined');
+                updateLastEvent('Sent: userJoined');
+            }
+        });
+        
+        document.getElementById('user-speaking').addEventListener('click', () => {
+            if (socket) {
+                socket.emit('userSpeaking');
+                updateLastEvent('Sent: userSpeaking');
+            }
+        });
+        
+        document.getElementById('user-stopped').addEventListener('click', () => {
+            if (socket) {
+                socket.emit('userStoppedSpeaking');
+                updateLastEvent('Sent: userStoppedSpeaking');
+            }
+        });
+        
+        document.getElementById('request-processing').addEventListener('click', () => {
+            if (socket) {
+                socket.emit('requestProcessing');
+                updateLastEvent('Sent: requestProcessing');
+            }
+        });
+        
+        document.getElementById('ai-response').addEventListener('click', () => {
+            if (socket) {
+                socket.emit('aiResponse', { text: 'Hello! This is a response from the AI.' });
+                updateLastEvent('Sent: aiResponse');
+            }
+        });
+        
+        document.getElementById('stop-stream').addEventListener('click', () => {
+            if (socket) {
+                // Using HTTP request to stop stream
+                fetch('/stream/stop', { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        updateLastEvent('Sent: stop stream - ' + data.message);
+                    })
+                    .catch(error => {
+                        updateLastEvent('Error stopping stream: ' + error.message);
+                    });
+            }
+        });
+        
+        // Initialize
+        updateConnectionStatus('Disconnected');
+    </script>
+</body>
+</html>

@@ -16,7 +16,6 @@ This application provides a video streaming service that seamlessly switches bet
 
 - Node.js (v18 or higher)
 - FFmpeg (system-installed)
-- An RTMP server (e.g., nginx-rtmp, Wowza, or AWS IVS)
 
 ## Installation
 
@@ -28,53 +27,33 @@ cd video-streaming-app
 # Install dependencies
 yarn install
 
-# Place your videos in the /videos directory:
-# - welcome.mp4 (played when user first joins)
-# - idle.mp4 (played when user isn't speaking)
-# - speaking.mp4 (played when user is speaking or AI responds)
+# Make sure you have ffmpeg installed on your system
+ffmpeg -version
 ```
 
-## Configuration
+## Setup
 
-Set your RTMP server URL in environment variables:
+1. Place your video files in the `videos/` directory:
+   - `welcome.mp4` - Played when user first joins
+   - `idle.mp4` - Played when user isn't speaking
+   - `speaking.mp4` - Played when user is speaking or AI is responding
 
-```bash
-RTMP_URL=rtmp://your-rtmp-server/live/stream
-```
-
-Or modify the default URL in `src/stream/stream.service.ts`.
-
-## Video Requirements
-
-For seamless transitions, all videos should have:
-- Same resolution and aspect ratio
-- Same audio sample rate (44100 Hz)
-- Same frame rate
-- Keyframes aligned (GOP size of 50 frames)
+2. Update the RTMP server URL in `src/stream/stream.service.ts`:
+   ```typescript
+   this.rtmpUrl = 'your-rtmp-server-url';
+   ```
 
 ## Running the Application
 
 ```bash
 # Development mode
-yarn run start
+yarn start
 
 # Production mode
-yarn run start:prod
+yarn start:prod
 ```
 
-The application will start on http://localhost:3000
-
-## API Usage
-
-### WebSocket Events
-
-Connect to the WebSocket server and emit these events:
-
-- `userJoined` - Start streaming welcome video
-- `userSpeaking` - Switch to speaking video
-- `userStoppedSpeaking` - Switch to idle video
-- `requestProcessing` - Show processing state (plays idle video)
-- `aiResponse` - Play response video with AI text: `{ text: "response text" }`
+## API Endpoints
 
 ### HTTP Endpoints
 
@@ -82,22 +61,31 @@ Connect to the WebSocket server and emit these events:
 - `POST /stream/idle` - Switch to idle video
 - `POST /stream/speaking` - Switch to speaking video
 - `POST /stream/processing` - Show processing state
-- `POST /stream/response` - Play response video (body: `{ text: "response text" }`)
+- `POST /stream/response` - Play response video (body: { text: "response text" })
 - `POST /stream/stop` - Stop streaming
 
-## How It Works
+### WebSocket Events
 
-1. When a user joins, the welcome video plays
-2. When the user isn't speaking, the idle video plays
-3. When the user is speaking, the speaking video plays
-4. During AI processing, the idle video continues playing
-5. When AI responds, the speaking video plays with the response
+- `userJoined` - Start streaming welcome video
+- `userSpeaking` - Switch to speaking video
+- `userStoppedSpeaking` - Switch to idle video
+- `requestProcessing` - Show processing state
+- `aiResponse` - Play response video with AI text
 
-The service uses FFmpeg with optimized settings to ensure smooth transitions:
-- Ultra-fast encoding preset
-- Zero-latency tuning
-- Consistent GOP size for seamless switching
-- Proper buffering settings
+## Testing
+
+You can test the application using the provided test scripts:
+
+```bash
+# Run the complete test (requires Docker)
+./run-complete-test.sh
+
+# Run streaming test only
+node test-streaming.js
+
+# Test RTMPS streaming directly
+node test-rtmps.js
+```
 
 ## Technical Details
 
@@ -113,22 +101,28 @@ The service uses these FFmpeg parameters for optimal streaming:
 -preset ultrafast            # Fast encoding for real-time
 -tune zerolatency            # Zero latency tuning
 -pix_fmt yuv420p             # Pixel format compatibility
--b:v 2500k                   # Video bitrate
--b:a 128k                    # Audio bitrate
--ar 44100                    # Audio sample rate
+-b:v 1200k                   # Video bitrate
+-maxrate 1200k               # Maximum bitrate
+-bufsize 1800k               # Buffer size
+-b:a 64k                     # Audio bitrate
+-ar 16000                    # Audio sample rate
+-ac 1                        # Audio channels
 -g 50                        # GOP size for smooth switching
--keyint_min 50               # Minimum GOP size
--sc_threshold 0              # Disable scene change detection
+-profile:v baseline          # Baseline profile for compatibility
+-level 3.1                   # Level 3.1
 -f flv                       # FLV format for RTMP
 ```
 
-### Transition Handling
+### Transition Optimization
 
-To prevent black screens and stuttering:
-1. Previous FFmpeg process is cleanly terminated before starting a new one
-2. Transition flag prevents multiple simultaneous transitions
-3. Videos are looped continuously to ensure seamless playback
-4. Consistent encoding settings across all videos
+To prevent stuttering and ensure smooth transitions:
+
+1. **Graceful Process Termination**: Previous FFmpeg process is properly terminated before starting a new one
+2. **Transition Locking**: Prevents multiple simultaneous transitions
+3. **Consistent Encoding**: All videos use the same encoding parameters
+4. **GOP Alignment**: GOP size of 50 frames for smooth switching
+5. **Fast Encoding**: Ultrafast preset with zerolatency tuning for minimal delay
+6. **Continuous Looping**: Videos loop continuously to prevent gaps
 
 ## Client Implementation
 
@@ -144,18 +138,19 @@ See `client-example.html` for a sample client implementation that demonstrates:
 1. Ensure all videos have the same resolution, frame rate, and audio settings
 2. Check that your RTMP server has sufficient bandwidth
 3. Verify that the GOP sizes are consistent across videos
+4. Confirm all videos are encoded with the same parameters
 
-### Black screen during transitions
+### Transitions causing stuttering
 
-1. Make sure videos have frequent keyframes (GOP size of 50 or less)
-2. Check that videos have the same resolution and aspect ratio
-3. Verify that the RTMP server is properly configured
+1. Make sure videos have keyframes aligned at consistent intervals (GOP size of 50)
+2. Use the ultrafast preset and zerolatency tuning for real-time encoding
+3. Ensure proper termination of previous FFmpeg processes before starting new ones
 
-### FFmpeg errors
+### Connection Issues
 
-1. Check that videos exist in the `/videos` directory
-2. Verify that videos are valid and not corrupted
-3. Ensure sufficient system resources for encoding
+1. Verify the RTMP server URL is correct
+2. Check that the RTMP server is running and accessible
+3. Ensure firewall settings allow RTMP traffic (usually port 1935)
 
 ## License
 

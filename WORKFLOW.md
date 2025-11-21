@@ -27,5 +27,6 @@ graph TD
 - **Consistent Encoding**: All videos encoded with same settings
 - **Proper GOP Alignment**: GOP size of 50 frames for smooth switching
 - **Fast Encoding**: Ultrafast preset with zerolatency tuning
-- **Clean Process Management**: Previous FFmpeg process terminated before starting new one
+- **Graceful Process Management**: Previous FFmpeg process properly terminated before starting new one
+- **Transition Locking**: Prevents multiple simultaneous transitions
 - **Looping**: Videos loop continuously to prevent gaps

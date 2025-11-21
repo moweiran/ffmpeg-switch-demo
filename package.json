@@ -20,7 +20,9 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "test:transitions": "node test-transitions.js",
     "test:audio": "node test-audio.js",
-    "test:stunnel": "node test-stunnel.js"
+    "test:stunnel": "node test-stunnel.js",
+    "test:unique": "node test-unique-keys.js",
+    "test:same": "node test-same-key.js"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",

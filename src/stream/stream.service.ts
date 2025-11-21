@@ -21,7 +21,6 @@ export class StreamService {
 
   constructor() {
     // Set your RTMP server URL here
-    // this.rtmpUrl = process.env.RTMP_URL || 'rtmp://localhost/live/stream';
     this.rtmpUrl = 'rtmps://rtmp.icommu.cn:4433/live/livestream';
   }
 
@@ -113,24 +112,35 @@ export class StreamService {
     
     this.logger.log(`Streaming video: ${videoPath} to ${this.rtmpUrl}`);
     
-    // Build ffmpeg command with optimized settings for smooth transitions
-    // Using H.264 codec which is compatible with FLV format
+    // Build ffmpeg command with optimized settings for stable RTMP streaming
     const args = [
       '-re', // Read input at native frame rate
       '-stream_loop', '-1', // Loop the video indefinitely
       '-i', videoPath, // Input file
-      '-c:v', 'libx264', // H.264 video codec (compatible with FLV)
-      '-c:a', 'aac', // AAC audio codec
-      '-preset', 'ultrafast', // Fast encoding for real-time streaming
-      '-tune', 'zerolatency', // Zero latency tuning
-      '-pix_fmt', 'yuv420p', // Pixel format compatible with most players
-      '-b:v', '2500k', // Video bitrate
-      '-b:a', '128k',  // Audio bitrate
-      '-ar', '44100',  // Audio sample rate
-      '-g', '50',      // GOP size - key for smooth switching
-      '-keyint_min', '50',
-      '-sc_threshold', '0',
-      '-f', 'flv',     // Output format for RTMP
+      '-acodec', 'aac', // AAC audio codec
+      '-vcodec', 'libx264', // H.264 video codec
+      '-profile:v', 'baseline', // Baseline profile for compatibility
+      '-level', '3.1', // Level 3.1
+      '-g', '60', // GOP size
+      '-r', '30', // Frame rate
+      '-s', '720x1280', // Video size
+      '-pix_fmt', 'yuv420p', // Pixel format
+      '-b:v', '1200k', // Video bitrate
+      '-maxrate', '1200k', // Maximum bitrate
+      '-bufsize', '1800k', // Buffer size
+      '-ar', '16000', // Audio sample rate
+      '-ac', '1', // Audio channels
+      '-b:a', '64k', // Audio bitrate
+      '-preset', 'medium', // Encoding preset
+      '-flags', '+low_delay', // Low delay flags
+      '-f', 'flv', // Output format for RTMP
+      '-flvflags', 'no_duration_filesize', // Prevent issues with duration/filesize updates
+      '-fflags', '+genpts', // Generate PTS
+      '-avoid_negative_ts', 'make_zero', // Avoid negative timestamps
+      '-reconnect', '1', // Enable reconnection
+      '-reconnect_at_eof', '1', // Reconnect at EOF
+      '-reconnect_streamed', '1', // Reconnect streamed
+      '-reconnect_delay_max', '2', // Max reconnect delay
       this.rtmpUrl     // RTMP output URL
     ];
     

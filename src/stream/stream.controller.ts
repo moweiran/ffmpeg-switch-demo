@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Param } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Body, Param, Query } from '@nestjs/common';
 import { StreamService } from './stream.service';
 
 @Controller('stream')
@@ -6,38 +6,37 @@ export class StreamController {
   constructor(private readonly streamService: StreamService) {}
 
   @Post('start')
-  startStreaming() {
-    this.streamService.startStreaming();
-    return { message: 'Streaming started with welcome video' };
+  async startStream(
+    @Body() body: { streamKey: string; inputSource: string }
+  ) {
+    const { streamKey, inputSource } = body;
+    return await this.streamService.startStream(streamKey, inputSource);
   }
 
-  @Post('idle')
-  switchToIdle() {
-    this.streamService.switchToIdle();
-    return { message: 'Switched to idle video' };
+  @Delete('stop/:streamKey')
+  async stopStream(@Param('streamKey') streamKey: string) {
+    const result = await this.streamService.stopStream(streamKey);
+    return { success: result };
   }
 
-  @Post('speaking')
-  switchToSpeaking() {
-    this.streamService.switchToSpeaking();
-    return { message: 'Switched to speaking video' };
+  @Post('timestamp/:streamKey')
+  async updateTimestamp(
+    @Param('streamKey') streamKey: string,
+    @Body() body: { timestamp: number }
+  ) {
+    this.streamService.updateStreamTimestamp(streamKey, body.timestamp);
+    return { success: true };
   }
 
-  @Post('processing')
-  switchToProcessing() {
-    this.streamService.switchToProcessing();
-    return { message: 'Switched to processing state' };
+  @Get('session/:streamKey')
+  async getSession(@Param('streamKey') streamKey: string) {
+    const session = this.streamService.getStreamSession(streamKey);
+    return { session };
   }
 
-  @Post('response')
-  playResponse(@Body() body: { text: string }) {
-    this.streamService.playResponseVideo(body.text);
-    return { message: 'Playing response video' };
-  }
-
-  @Post('stop')
-  stopStreaming() {
-    this.streamService.stopStreaming();
-    return { message: 'Streaming stopped' };
+  @Get('sessions')
+  async getAllSessions() {
+    const sessions = this.streamService.getAllActiveSessions();
+    return { sessions };
   }
 }

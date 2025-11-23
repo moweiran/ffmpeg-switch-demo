@@ -11,6 +11,8 @@ This application provides a video streaming service that seamlessly switches bet
   3. Speaking video (when user is speaking or AI is responding)
 - WebSocket and HTTP APIs for controlling the stream
 - Optimized FFmpeg settings for real-time streaming
+- FIFO-based streaming for seamless transitions
+- Enhanced audio continuity with optimized encoding parameters
 
 ## Prerequisites
 
@@ -85,6 +87,12 @@ node test-streaming.js
 
 # Test RTMPS streaming directly
 node test-rtmps.js
+
+# Run optimized transition tests
+node test-optimized-transitions.js
+
+# Debug specific transitions
+node debug-transitions.js
 ```
 
 ## Technical Details
@@ -95,63 +103,43 @@ The service uses these FFmpeg parameters for optimal streaming:
 
 ```
 -re                           # Read input at native frame rate
--stream_loop -1              # Loop the video indefinitely
--c:v libx264                 # H.264 video codec
--c:a aac                     # AAC audio codec
--preset ultrafast            # Fast encoding for real-time
--tune zerolatency            # Zero latency tuning
--pix_fmt yuv420p             # Pixel format compatibility
--b:v 1200k                   # Video bitrate
--maxrate 1200k               # Maximum bitrate
--bufsize 1800k               # Buffer size
--b:a 64k                     # Audio bitrate
--ar 16000                    # Audio sample rate
--ac 1                        # Audio channels
--g 50                        # GOP size for smooth switching
--profile:v baseline          # Baseline profile for compatibility
--level 3.1                   # Level 3.1
--f flv                       # FLV format for RTMP
+-stream_loop -1               # Loop the video indefinitely
+-c:v libx264                  # H.264 video codec
+-c:a aac                      # AAC audio codec
+-preset ultrafast             # Fast encoding for real-time
+-tune zerolatency             # Zero latency tuning
+-pix_fmt yuv420p              # Pixel format compatibility
+-b:v 1200k                    # Video bitrate
+-maxrate 1200k                # Maximum bitrate
+-bufsize 1800k                # Buffer size
+-ar 16000                     # Audio sample rate
+-ac 1                         # Audio channels
+-b:a 64k                      # Audio bitrate
+-g 60                         # GOP size for smooth switching
+-profile:v baseline           # Baseline profile for compatibility
+-level 3.1                    # Level 3.1
+-f flv                        # FLV format for RTMP
+-start_at_zero                # Start timestamps at zero for consistency
+-fflags +genpts               # Generate presentation timestamps
+-avoid_negative_ts make_zero  # Handle negative timestamps
 ```
 
-### Transition Optimization
+### Optimization Features
 
-To prevent stuttering and ensure smooth transitions:
+1. **FIFO-based Streaming**: Uses named pipes for seamless video transitions without restarting FFmpeg
+2. **Enhanced Audio Continuity**: Optimized audio encoding parameters ensure consistent audio during transitions
+3. **Transition Throttling**: Prevents overly frequent transitions that could cause stuttering
+4. **Improved Error Handling**: Better logging and error recovery mechanisms
+5. **Stream Keepalive**: Regular data injection to maintain stream stability
 
-1. **Graceful Process Termination**: Previous FFmpeg process is properly terminated before starting a new one
-2. **Transition Locking**: Prevents multiple simultaneous transitions
-3. **Consistent Encoding**: All videos use the same encoding parameters
-4. **GOP Alignment**: GOP size of 50 frames for smooth switching
-5. **Fast Encoding**: Ultrafast preset with zerolatency tuning for minimal delay
-6. **Continuous Looping**: Videos loop continuously to prevent gaps
+### Seamless Transition Mechanism
 
-## Client Implementation
+The application uses a FIFO (First In, First Out) named pipe approach:
 
-See `client-example.html` for a sample client implementation that demonstrates:
-- Connecting to the WebSocket server
-- Emitting events based on user interactions
-- Controlling the stream via HTTP endpoints
+1. FFmpeg continuously reads from a named pipe (`stream_fifo.mp4`)
+2. When switching videos, the new video is piped into the FIFO
+3. FFmpeg seamlessly transitions to the new content without restarting
+4. Timestamp synchronization ensures no gaps or black screens
+5. Audio continuity is maintained through proper AAC encoding parameters
 
-## Troubleshooting
-
-### Videos not playing smoothly
-
-1. Ensure all videos have the same resolution, frame rate, and audio settings
-2. Check that your RTMP server has sufficient bandwidth
-3. Verify that the GOP sizes are consistent across videos
-4. Confirm all videos are encoded with the same parameters
-
-### Transitions causing stuttering
-
-1. Make sure videos have keyframes aligned at consistent intervals (GOP size of 50)
-2. Use the ultrafast preset and zerolatency tuning for real-time encoding
-3. Ensure proper termination of previous FFmpeg processes before starting new ones
-
-### Connection Issues
-
-1. Verify the RTMP server URL is correct
-2. Check that the RTMP server is running and accessible
-3. Ensure firewall settings allow RTMP traffic (usually port 1935)
-
-## License
-
-This project is licensed under the MIT License.
+This approach eliminates the need to restart FFmpeg for each transition, which was the primary cause of black screens and audio dropouts in previous implementations.

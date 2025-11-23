@@ -22,7 +22,9 @@
     "test:audio": "node test-audio.js",
     "test:stunnel": "node test-stunnel.js",
     "test:unique": "node test-unique-keys.js",
-    "test:same": "node test-same-key.js"
+    "test:same": "node test-same-key.js",
+    "test:basic": "node test-basic-transitions.js",
+    "test:optimized": "node test-optimized-transitions.js"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",

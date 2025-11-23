@@ -68,7 +68,7 @@ export class StreamService {
   async switchToIdle(streamKey: string): Promise<boolean> {
     this.streamStates.set(streamKey, 'idle');
     // 对于相同视频文件，重置时间戳以从头开始播放
-    return await this.switchVideo(streamKey, 'output.mp4', true);
+    return await this.switchVideo(streamKey, 'idle2.mp4', true);
   }
 
   /**
@@ -77,13 +77,15 @@ export class StreamService {
   async switchToSpeaking(streamKey: string): Promise<boolean> {
     this.streamStates.set(streamKey, 'speaking');
     // 对于相同视频文件，重置时间戳以从头开始播放
-    return await this.switchVideo(streamKey, 'audio_0.mp4', true);
+    // return await this.switchVideo(streamKey, 'speaking1.mp4', true);
+    // return await this.switchVideo(streamKey, 'audio_0.mp4', true);
+    return await this.switchVideo(streamKey, 'speaking3.mp4', true);
   }
 
   async switchToWelcome(streamKey: string): Promise<boolean> {
     this.streamStates.set(streamKey, 'welcome');
     // 对于相同视频文件，重置时间戳以从头开始播放
-    return await this.switchVideo(streamKey, 'output.mp4', true);
+    return await this.switchVideo(streamKey, 'welcome1.mp4', true);
   }
 
   /**
@@ -180,49 +182,152 @@ export class StreamService {
       return;
     }
 
-    // 使用优化的 FFmpeg 参数确保流稳定性，添加音频重采样参数防止重复播放时的音频问题
-    const args = [
-      '-re',                    // 以本地帧速率读取输入
-      '-stream_loop', '-1',
-      '-i', videoPath,          // 输入源
+    // Base arguments for all streams
+    const baseArgs = [
+      '-re', // 以本地帧速率读取输入
+      '-stream_loop',
+      '-1',
+      '-i',
+      videoPath, // 输入源
+
+      // Force consistent video properties for all inputs
+      '-vf',
+      'scale=720:1280,fps=30,setsar=1:1,format=yuv420p',
+      '-colorspace',
+      'bt709',
+      '-color_range',
+      'tv',
+      '-color_primaries',
+      'bt709',
+      '-color_trc',
+      'bt709',
 
       // 视频编码参数
-      '-c:v', 'libx264',        // 使用 H.264 编码器
-      '-profile:v', 'baseline', // Baseline profile for better compatibility
-      '-level', '3.1',          // Level 3.1
-      '-pix_fmt', 'yuv420p',    // Pixel format
-      '-s', '720x1280',         // Resolution
-      '-r', '30',               // Frame rate
-      '-g', '60',               // GOP size
-      '-b:v', '1200k',          // Video bitrate
-      '-maxrate', '1200k',      // Maximum bitrate
-      '-bufsize', '1800k',      // Buffer size
+      '-c:v',
+      'libx264', // 使用 H.264 编码器
+      '-profile:v',
+      'baseline', // Baseline profile for better compatibility
+      '-level',
+      '3.1', // Level 3.1
+      '-pix_fmt',
+      'yuv420p', // Pixel format
+      '-s',
+      '720x1280', // Resolution
+      '-r',
+      '30', // Frame rate
+      '-g',
+      '60', // GOP size
+      '-b:v',
+      '1200k', // Video bitrate
+      '-maxrate',
+      '1200k', // Maximum bitrate
+      '-bufsize',
+      '1800k', // Buffer size
+    ];
 
+    // 使用优化的 FFmpeg 参数确保流稳定性，添加音频重采样参数防止重复播放时的音频问题
+    var audioArgs = [
       // 音频编码参数 - 添加更多兼容性选项
-      '-c:a', 'aac',            // 使用 AAC 音频编码器
-      '-ar', '16000',           // Audio sample rate
-      '-ac', '1',               // Audio channels
-      '-b:a', '64k',            // Audio bitrate
-      '-af', 'aresample=async=1:first_pts=0', // 音频重采样以处理时间戳问题
+      '-c:a',
+      'aac', // 使用 AAC 音频编码器
+      '-ar',
+      '16000', // Audio sample rate
+      '-ac',
+      '1', // Audio channels
+      '-b:a',
+      '64k', // Audio bitrate
+      // Force audio stream creation even if input lacks audio
+      // '-shortest',
+      // '-af', 'aresample=async=1:first_pts=0,silencedetect=n=-50dB:d=1',
+      //  inputSource.startsWith("idle") ? "" : "",
+      '-af',
+      'aresample=async=1:first_pts=0', // 音频重采样以处理时间戳问题
+      // '-strict', 'experimental', // Allows experimental audio encoders if needed
+    ];
 
+    // Output and formatting arguments
+    const outputArgs = [
       // 编码器预设和调优
-      '-preset', 'medium',      // Encoding preset
-      '-tune', 'zerolatency',   // Tune for low latency
-      '-avoid_negative_ts', 'make_zero', // 避免负时间戳
+      '-preset',
+      'medium', // Encoding preset
+      '-tune',
+      'zerolatency', // Tune for low latency
+      '-avoid_negative_ts',
+      'make_zero', // 避免负时间戳
 
       // 输出格式和目标 - 添加更多流稳定性参数
-      '-f', 'flv',              // Output format
-      '-flags', '+low_delay',   // Low delay flags
-      '-initial_offset', `${initialOffset}`,
-      '-flush_packets', '1',     // Flush packets immediately
-      '-fflags', '+genpts',     // 生成缺失的时间戳
-      '-reconnect', '1',        // 启用重新连接
-      '-reconnect_at_eof', '1', // 在EOF时重新连接
-      '-reconnect_streamed', '1', // 重新连接流媒体
-      '-reconnect_delay_max', '2', // 最大重新连接延迟
+      '-f',
+      'flv', // Output format
+      '-flags',
+      '+low_delay', // Low delay flags
+      '-initial_offset',
+      `${initialOffset}`,
+      '-flush_packets',
+      '1', // Flush packets immediately
+      '-fflags',
+      '+genpts', // 生成缺失的时间戳
+      '-reconnect',
+      '1', // 启用重新连接
+      '-reconnect_at_eof',
+      '1', // 在EOF时重新连接
+      '-reconnect_streamed',
+      '1', // 重新连接流媒体
+      '-reconnect_delay_max',
+      '2', // 最大重新连接延迟
       '-y',
-      'rtmps://rtmp.icommu.cn:4433/live/livestream'  // RTMP destination
+      'rtmps://rtmp.icommu.cn:4433/live/livestream', // RTMP destination
     ];
+
+    // const args = [
+    //   '-re',                    // 以本地帧速率读取输入
+    //   '-stream_loop', '-1',
+    //   '-i', videoPath,          // 输入源
+
+    //   // Force consistent video properties for all inputs
+    //   '-vf', 'scale=720:1280,fps=30,setsar=1:1,format=yuv420p',
+    //   '-colorspace', 'bt709',
+    //   '-color_range', 'tv',
+    //   '-color_primaries', 'bt709',
+    //   '-color_trc', 'bt709',
+
+    //   // 视频编码参数
+    //   '-c:v', 'libx264',        // 使用 H.264 编码器
+    //   '-profile:v', 'baseline', // Baseline profile for better compatibility
+    //   '-level', '3.1',          // Level 3.1
+    //   '-pix_fmt', 'yuv420p',    // Pixel format
+    //   '-s', '720x1280',         // Resolution
+    //   '-r', '30',               // Frame rate
+    //   '-g', '60',               // GOP size
+    //   '-b:v', '1200k',          // Video bitrate
+    //   '-maxrate', '1200k',      // Maximum bitrate
+    //   '-bufsize', '1800k',      // Buffer size
+
+    //   inputSource.startsWith("idle") ? "" : audioArgs,
+
+    //   // 编码器预设和调优
+    //   '-preset', 'medium',      // Encoding preset
+    //   '-tune', 'zerolatency',   // Tune for low latency
+    //   '-avoid_negative_ts', 'make_zero', // 避免负时间戳
+
+    //   // 输出格式和目标 - 添加更多流稳定性参数
+    //   '-f', 'flv',              // Output format
+    //   '-flags', '+low_delay',   // Low delay flags
+    //   '-initial_offset', `${initialOffset}`,
+    //   '-flush_packets', '1',     // Flush packets immediately
+    //   '-fflags', '+genpts',     // 生成缺失的时间戳
+    //   '-reconnect', '1',        // 启用重新连接
+    //   '-reconnect_at_eof', '1', // 在EOF时重新连接
+    //   '-reconnect_streamed', '1', // 重新连接流媒体
+    //   '-reconnect_delay_max', '2', // 最大重新连接延迟
+    //   '-y',
+    //   'rtmps://rtmp.icommu.cn:4433/live/livestream'  // RTMP destination
+    // ];
+
+    const args = [...baseArgs];
+    // if(!inputSource.startsWith("idle")){
+    args.push(...audioArgs);
+    // }
+    args.push(...outputArgs);
 
     this.logger.log(`启动 FFmpeg: ffmpeg ${args.join(' ')}`);
 

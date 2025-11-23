@@ -28,14 +28,14 @@ export class StreamService {
   ): Promise<{ sessionId: string; initialOffset: number }> {
     // 设置初始状态为 pending
     this.streamStates.set(streamKey, 'pending');
-    
+
     // 检查是否已有活跃会话
     const existingSession = this.activeSessions.get(streamKey);
     console.log(JSON.stringify(this.activeSessions));
 
     let initialOffset = 0;
 
-    if (existingSession && existingSession.isActive) {
+    if (existingSession) {
       // 如果存在活跃会话，使用上次的最后时间戳 + 缓冲
       initialOffset = existingSession.lastTimestamp + 1000; // 增加1秒缓冲
       this.logger.log(`接续流 ${streamKey}，初始偏移: ${initialOffset}ms`);
@@ -75,6 +75,11 @@ export class StreamService {
     return await this.switchVideo(streamKey, 'speaking.mp4');
   }
 
+  async switchToWelcome(streamKey: string): Promise<boolean> {
+    this.streamStates.set(streamKey, 'welcome');
+    return await this.switchVideo(streamKey, 'welcome.mp4');
+  }
+
   /**
    * 切换视频源
    */
@@ -90,27 +95,30 @@ export class StreamService {
 
     try {
       // 获取现有会话
+      console.log('activeSessions', JSON.stringify(this.activeSessions));
       const session = this.activeSessions.get(streamKey);
-      if (!session || !session.isActive) {
+      if (!session) {
         this.logger.warn(`未找到活跃的流会话: ${streamKey}`);
         return false;
+      } else {
+        this.logger.log(`找到活跃的流会话: ${streamKey}`);
       }
 
       // 终止现有 FFmpeg 进程
       const existingProcess = this.ffmpegProcesses.get(streamKey);
       if (existingProcess) {
         existingProcess.kill('SIGTERM');
-        
+
         // 等待进程完全终止
-        await new Promise(resolve => setTimeout(resolve, 300));
+        // await new Promise(resolve => setTimeout(resolve, 300));
       }
 
       // 等待资源释放
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // await new Promise(resolve => setTimeout(resolve, 500));
 
       // 启动新的 FFmpeg 进程
-      await new Promise(resolve => setTimeout(resolve, 200));
-      
+      // await new Promise(resolve => setTimeout(resolve, 200));
+
       // 启动新的 FFmpeg 推流
       this.startFFmpegStream(session, videoFile, session.lastTimestamp);
 
@@ -135,7 +143,7 @@ export class StreamService {
   ): void {
     const { spawn } = require('child_process');
     const videoPath = join(process.cwd(), 'videos', inputSource);
-    
+
     // 使用优化的 FFmpeg 参数确保流稳定性
     const args = [
       '-re', // 以本地帧速率读取输入
@@ -160,6 +168,8 @@ export class StreamService {
       '-fflags', '+genpts', // 强制生成 pts
       '-avoid_negative_ts', 'make_zero', // 避免负时间戳
       '-initial_offset', initialOffset.toString(), // 设置初始时间戳偏移
+      // '-initial_offset', '0',
+      '-flush_packets', '1', // 立即刷新包
       '-flvflags', 'no_duration_filesize', // FLV 标志
       '-f', 'flv', // 输出格式
       'rtmps://rtmp.icommu.cn:4433/live/livestream', // RTMP 地址
@@ -236,7 +246,7 @@ export class StreamService {
   async stopStream(streamKey: string): Promise<boolean> {
     // 清除状态
     this.streamStates.delete(streamKey);
-    
+
     const process = this.ffmpegProcesses.get(streamKey);
 
     if (process) {
@@ -255,7 +265,7 @@ export class StreamService {
    */
   updateStreamTimestamp(streamKey: string, timestamp: number): void {
     const session = this.activeSessions.get(streamKey);
-    if (session && session.isActive) {
+    if (session) {
       session.updateTimestamp(timestamp);
       this.logger.debug(`更新流 ${streamKey} 时间戳: ${timestamp}`);
     }
@@ -272,9 +282,7 @@ export class StreamService {
    * 获取所有活跃会话
    */
   getAllActiveSessions(): StreamSession[] {
-    return Array.from(this.activeSessions.values()).filter(
-      (session) => session.isActive,
-    );
+    return Array.from(this.activeSessions.values());
   }
 
   /**
@@ -284,7 +292,7 @@ export class StreamService {
     let cleanedCount = 0;
 
     for (const [streamKey, session] of this.activeSessions.entries()) {
-      if (!session.isActive) {
+      if (!session) {
         this.activeSessions.delete(streamKey);
         this.streamStates.delete(streamKey);
         cleanedCount++;

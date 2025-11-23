@@ -3,7 +3,7 @@ export class StreamSession {
     streamKey: string;
     startTime: number; // 开始时间戳
     lastTimestamp: number; // 最后的时间戳
-    isActive: boolean;
+    // isActive: boolean;
     createdAt: Date;
     updatedAt: Date;
   
@@ -12,7 +12,7 @@ export class StreamSession {
       this.streamKey = streamKey;
       this.startTime = Date.now();
       this.lastTimestamp = 0;
-      this.isActive = true;
+      // this.isActive = true;
       this.createdAt = new Date();
       this.updatedAt = new Date();
     }
@@ -23,7 +23,7 @@ export class StreamSession {
     }
   
     stop() {
-      this.isActive = false;
+      // this.isActive = false;
       this.updatedAt = new Date();
     }
   }

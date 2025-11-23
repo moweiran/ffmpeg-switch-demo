@@ -29,6 +29,14 @@ export class StreamController {
     return await this.streamService.switchToSpeaking(streamKey);
   }
 
+  @Post('welcome')
+  async welcomeStream(
+    @Body() body: { streamKey: string }
+  ) {
+    const { streamKey } = body;
+    return await this.streamService.switchToWelcome(streamKey);
+  }
+
   @Delete('stop/:streamKey')
   async stopStream(@Param('streamKey') streamKey: string) {
     const result = await this.streamService.stopStream(streamKey);

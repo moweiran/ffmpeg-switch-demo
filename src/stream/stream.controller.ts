@@ -13,6 +13,22 @@ export class StreamController {
     return await this.streamService.startStream(streamKey, inputSource);
   }
 
+  @Post('idle')
+  async idleStream(
+    @Body() body: { streamKey: string }
+  ) {
+    const { streamKey } = body;
+    return await this.streamService.switchToIdle(streamKey);
+  }
+
+  @Post('speaking')
+  async speakingStream(
+    @Body() body: { streamKey: string }
+  ) {
+    const { streamKey } = body;
+    return await this.streamService.switchToSpeaking(streamKey);
+  }
+
   @Delete('stop/:streamKey')
   async stopStream(@Param('streamKey') streamKey: string) {
     const result = await this.streamService.stopStream(streamKey);

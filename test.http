@@ -6,36 +6,31 @@ content-type: application/json
     "inputSource": "welcome.mp4"
 }
 
-### idle
-POST http://localhost:3000/stream/start HTTP/1.1
-content-type: application/json
 
-{
-    "streamKey": "test123",
-    "inputSource": "idle.mp4"
-}
+### Get all sessions
+GET http://localhost:3000/stream/sessions HTTP/1.1
 
-### idle
+
+### Switch to idle
 POST http://localhost:3000/stream/idle HTTP/1.1
 content-type: application/json
 
 {
-    "name": "sample",
-    "time": "Wed, 21 Oct 2015 18:27:50 GMT"
+    "streamKey": "test123"
 }
 
-### speaking
+
+### Switch to speaking
 POST http://localhost:3000/stream/speaking HTTP/1.1
 content-type: application/json
 
 {
-    "name": "sample",
-    "time": "Wed, 21 Oct 2015 18:27:50 GMT"
+    "streamKey": "test123"
 }
 
 
-### stop
-POST http://localhost:3000/stream/stop HTTP/1.1
+### Stop stream
+DELETE http://localhost:3000/stream/stop/test123 HTTP/1.1
 content-type: application/json
 
 {
@@ -49,11 +44,4 @@ content-type: application/json
 {
     "name": "sample",
     "time": "Wed, 21 Oct 2015 18:27:50 GMT"
-}
-
-### session
-POST http://localhost:3000/stream/sessions HTTP/1.1
-
-{
-
 }

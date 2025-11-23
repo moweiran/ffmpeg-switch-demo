@@ -13,15 +13,25 @@ export class StreamService {
   // 存储 FFmpeg 进程
   private ffmpegProcesses: Map<string, ChildProcess> = new Map();
 
+  // 存储当前流的状态
+  private streamStates: Map<string, string> = new Map(); // 'pending' | 'idle' | 'speaking'
+
+  // 转换锁，防止并发转换
+  private transitionLocks: Map<string, boolean> = new Map();
+
   /**
    * 开始推流
    */
   async startStream(
     streamKey: string,
-    inputSource: string,
+    inputSource: string = 'welcome.mp4',
   ): Promise<{ sessionId: string; initialOffset: number }> {
+    // 设置初始状态为 pending
+    this.streamStates.set(streamKey, 'pending');
+    
     // 检查是否已有活跃会话
     const existingSession = this.activeSessions.get(streamKey);
+    console.log(JSON.stringify(this.activeSessions));
 
     let initialOffset = 0;
 
@@ -29,7 +39,6 @@ export class StreamService {
       // 如果存在活跃会话，使用上次的最后时间戳 + 缓冲
       initialOffset = existingSession.lastTimestamp + 1000; // 增加1秒缓冲
       this.logger.log(`接续流 ${streamKey}，初始偏移: ${initialOffset}ms`);
-
       // 停止之前的推流进程
       await this.stopStream(streamKey);
     } else {
@@ -51,6 +60,72 @@ export class StreamService {
   }
 
   /**
+   * 切换到空闲状态
+   */
+  async switchToIdle(streamKey: string): Promise<boolean> {
+    this.streamStates.set(streamKey, 'idle');
+    return await this.switchVideo(streamKey, 'idle.mp4');
+  }
+
+  /**
+   * 切换到说话状态
+   */
+  async switchToSpeaking(streamKey: string): Promise<boolean> {
+    this.streamStates.set(streamKey, 'speaking');
+    return await this.switchVideo(streamKey, 'speaking.mp4');
+  }
+
+  /**
+   * 切换视频源
+   */
+  private async switchVideo(streamKey: string, videoFile: string): Promise<boolean> {
+    // 检查是否正在转换中
+    if (this.transitionLocks.get(streamKey)) {
+      this.logger.warn(`流 ${streamKey} 正在转换中，请稍后再试`);
+      return false;
+    }
+
+    // 设置转换锁
+    this.transitionLocks.set(streamKey, true);
+
+    try {
+      // 获取现有会话
+      const session = this.activeSessions.get(streamKey);
+      if (!session || !session.isActive) {
+        this.logger.warn(`未找到活跃的流会话: ${streamKey}`);
+        return false;
+      }
+
+      // 终止现有 FFmpeg 进程
+      const existingProcess = this.ffmpegProcesses.get(streamKey);
+      if (existingProcess) {
+        existingProcess.kill('SIGTERM');
+        
+        // 等待进程完全终止
+        await new Promise(resolve => setTimeout(resolve, 300));
+      }
+
+      // 等待资源释放
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // 启动新的 FFmpeg 进程
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      // 启动新的 FFmpeg 推流
+      this.startFFmpegStream(session, videoFile, session.lastTimestamp);
+
+      this.logger.log(`成功切换流 ${streamKey} 到 ${videoFile}`);
+      return true;
+    } catch (error) {
+      this.logger.error(`切换流 ${streamKey} 失败: ${error.message}`);
+      return false;
+    } finally {
+      // 释放转换锁
+      this.transitionLocks.set(streamKey, false);
+    }
+  }
+
+  /**
    * 启动 FFmpeg 推流进程
    */
   private startFFmpegStream(
@@ -59,21 +134,35 @@ export class StreamService {
     initialOffset: number,
   ): void {
     const { spawn } = require('child_process');
-    const videoPath = join(process.cwd(), 'videos', "welcome.mp4")
-    // FFmpeg 命令参数
+    const videoPath = join(process.cwd(), 'videos', inputSource);
+    
+    // 使用优化的 FFmpeg 参数确保流稳定性
     const args = [
-      '-i',
-      videoPath, // 输入源
-      '-c',
-      'copy', // 流拷贝，不重新编码
-      '-f',
-      'flv', // 输出格式
-      '-initial_offset',
-      initialOffset.toString(), // 关键：设置初始时间戳偏移
-      '-flush_packets',
-      '1', // 立即刷新包
-      '-y', // 覆盖输出文件
-      `rtmps://rtmp.icommu.cn:4433/live/livestream`, // RTMP 地址
+      '-re', // 以本地帧速率读取输入
+      '-stream_loop', '-1', // 循环播放输入源
+      '-i', videoPath, // 输入源
+      '-c:v', 'libx264', // 视频编码器
+      '-profile:v', 'baseline', // H.264 基准配置
+      '-level', '3.1', // H.264 级别
+      '-g', '60', // GOP 大小
+      '-r', '30', // 帧率
+      '-s', '720x1280', // 分辨率
+      '-pix_fmt', 'yuv420p', // 像素格式
+      '-b:v', '1200k', // 视频比特率
+      '-maxrate', '1200k', // 最大比特率
+      '-bufsize', '1800k', // 缓冲区大小
+      '-c:a', 'aac', // 音频编码器
+      '-ar', '16000', // 音频采样率
+      '-ac', '1', // 音频通道数
+      '-b:a', '64k', // 音频比特率
+      '-preset', 'medium', // 编码预设
+      '-flags', '+low_delay', // 低延迟标志
+      '-fflags', '+genpts', // 强制生成 pts
+      '-avoid_negative_ts', 'make_zero', // 避免负时间戳
+      '-initial_offset', initialOffset.toString(), // 设置初始时间戳偏移
+      '-flvflags', 'no_duration_filesize', // FLV 标志
+      '-f', 'flv', // 输出格式
+      'rtmps://rtmp.icommu.cn:4433/live/livestream', // RTMP 地址
     ];
 
     this.logger.log(`启动 FFmpeg: ffmpeg ${args.join(' ')}`);
@@ -145,6 +234,9 @@ export class StreamService {
    * 停止推流
    */
   async stopStream(streamKey: string): Promise<boolean> {
+    // 清除状态
+    this.streamStates.delete(streamKey);
+    
     const process = this.ffmpegProcesses.get(streamKey);
 
     if (process) {
@@ -194,6 +286,7 @@ export class StreamService {
     for (const [streamKey, session] of this.activeSessions.entries()) {
       if (!session.isActive) {
         this.activeSessions.delete(streamKey);
+        this.streamStates.delete(streamKey);
         cleanedCount++;
       }
     }

@@ -3,13 +3,8 @@ content-type: application/json
 
 {
     "streamKey": "test123",
-    "inputSource": "welcome.mp4"
+    "inputSource": "audio_0.mp4"
 }
-
-
-### Get all sessions
-GET http://localhost:3000/stream/sessions HTTP/1.1
-
 
 ### Switch to idle
 POST http://localhost:3000/stream/idle HTTP/1.1
@@ -45,6 +40,13 @@ content-type: application/json
     "name": "sample",
     "time": "Wed, 21 Oct 2015 18:27:50 GMT"
 }
+
+
+
+### Get all sessions
+GET http://localhost:3000/stream/sessions HTTP/1.1
+
+
 
 ### stop
 POST http://localhost:3000/stream/stop/test123 HTTP/1.1

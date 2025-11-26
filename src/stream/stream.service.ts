@@ -68,7 +68,7 @@ export class StreamService {
   async switchToIdle(streamKey: string): Promise<boolean> {
     this.streamStates.set(streamKey, 'idle');
     // 对于相同视频文件，重置时间戳以从头开始播放
-    return await this.switchVideo(streamKey, 'idle2.mp4', true);
+    return await this.switchVideo(streamKey, 'idle2.mp4', false);
   }
 
   /**
@@ -79,13 +79,13 @@ export class StreamService {
     // 对于相同视频文件，重置时间戳以从头开始播放
     // return await this.switchVideo(streamKey, 'speaking1.mp4', true);
     // return await this.switchVideo(streamKey, 'audio_0.mp4', true);
-    return await this.switchVideo(streamKey, 'speaking3.mp4', true);
+    return await this.switchVideo(streamKey, 'speaking3.mp4', false);
   }
 
   async switchToWelcome(streamKey: string): Promise<boolean> {
     this.streamStates.set(streamKey, 'welcome');
     // 对于相同视频文件，重置时间戳以从头开始播放
-    return await this.switchVideo(streamKey, 'welcome1.mp4', true);
+    return await this.switchVideo(streamKey, 'welcome1.mp4', false);
   }
 
   /**
@@ -140,6 +140,7 @@ export class StreamService {
 
       // 确定初始偏移量
       let initialOffset = 0;
+      console.log("resetTimestamp", resetTimestamp, "session=", JSON.stringify(session))
       if (!resetTimestamp) {
         // 如果不需要重置时间戳，则使用累积的时间戳
         initialOffset = session.lastTimestamp;
